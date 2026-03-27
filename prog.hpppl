@@ -1,0 +1,12 @@
+EXPORT SomaNumeros()
+BEGIN
+    LOCAL num1, num2, resultado;
+    
+    INPUT(num1, "Número 1", "Digite o primeiro número:");
+    INPUT(num2, "Número 2", "Digite o segundo número:");
+    
+    resultado := num1 + num2;
+    MSGBOX("Resultado: " + resultado);
+    
+    RETURN resultado;
+END;

@@ -1,0 +1,21 @@
+// program 01
+// sum all elements in stack
+<<
+    WHILE 
+        DEPTH 1 > 
+        REPEAT + 
+    END
+>>
+
+
+// program 02
+// 
+<< -> N 
+    <<
+        N
+        NEG
+    >>
+>>
+
+
+<< -> N  << N NEG >> >>

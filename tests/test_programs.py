@@ -127,3 +127,141 @@ def test_for_step():
     assert s.depth() == 5
     values = [s.pop().value for _ in range(5)]
     assert values == [9, 7, 5, 3, 1]
+
+
+# ===================== → (local variable binding) =====================
+
+def test_arrow_basic():
+    """« → N « N NEG » » with 5 on stack → -5."""
+    s = make_stack(5)
+    execute(["->", "N", "<< N NEG >>"], s, {})
+    assert top(s) == -5
+
+
+def test_arrow_two_vars():
+    """« → A B « A B - » » with 10, 3 → 7."""
+    s = make_stack(10, 3)
+    execute(["->", "A", "B", "<< A B - >>"], s, {})
+    assert top(s) == 7
+
+
+def test_arrow_preserves_outer_vars():
+    """→ should restore outer variable after inner scope ends."""
+    s = make_stack(99, 5)
+    variables = {"N": RPNNumber(42)}
+    execute(["->", "N", "<< N DUP * >>"], s, variables)
+    # After → scope ends, N should be restored to 42
+    assert variables["N"].value == 42
+    assert top(s) == 25
+
+
+def test_arrow_cleans_up_local():
+    """After → scope ends, local var is removed if it didn't exist before."""
+    s = make_stack(7)
+    variables = {}
+    execute(["->", "X", "<< X 2 * >>"], s, variables)
+    assert "X" not in variables
+    assert top(s) == 14
+
+
+def test_arrow_remaining_tokens_as_body():
+    """→ without explicit « » body uses remaining non-identifier tokens."""
+    s = make_stack(3, 4)
+    execute(["->", "A", "B", "<< A B + >>"], s, {})
+    assert top(s) == 7
+
+
+def test_arrow_nested_in_program():
+    """Store a program using → and EVAL it."""
+    s = Stack()
+    variables = {}
+    s.push(RPNProgram(["->", "N", "<< N N * >>"]))
+    s.push(RPNSymbol("SQ"))
+    dispatch("STO", s, variables)
+    s.push(RPNNumber(6))
+    dispatch("SQ", s, variables, executor)
+    assert top(s) == 36
+
+
+# ===================== CASE / THEN / END =====================
+
+def test_case_first_match():
+    """CASE: first matching branch executes."""
+    s = make_stack(1)
+    execute([
+        "CASE",
+        "DUP", "1", "==", "THEN", "10", "END",
+        "DUP", "2", "==", "THEN", "20", "END",
+        "30",
+        "END"
+    ], s, {})
+    # Stack: 1 (from DUP in the original), 10
+    assert s.peek(1).value == 10
+
+
+def test_case_second_match():
+    """CASE: second branch matches."""
+    s = make_stack(2)
+    execute([
+        "CASE",
+        "DUP", "1", "==", "THEN", "10", "END",
+        "DUP", "2", "==", "THEN", "20", "END",
+        "30",
+        "END"
+    ], s, {})
+    assert s.peek(1).value == 20
+
+
+def test_case_default():
+    """CASE: no match, default executed."""
+    s = make_stack(9)
+    execute([
+        "CASE",
+        "DUP", "1", "==", "THEN", "10", "END",
+        "DUP", "2", "==", "THEN", "20", "END",
+        "30",
+        "END"
+    ], s, {})
+    assert s.peek(1).value == 30
+
+
+def test_case_no_default():
+    """CASE with no default — nothing extra happens if no match."""
+    s = make_stack(9)
+    execute([
+        "CASE",
+        "DUP", "1", "==", "THEN", "10", "END",
+        "END"
+    ], s, {})
+    assert s.depth() == 1
+    assert top(s) == 9
+
+
+# ===================== IFERR / THEN / ELSE / END =====================
+
+def test_iferr_no_error():
+    """IFERR: no error → ELSE branch executes."""
+    s = make_stack(4, 2)
+    execute([
+        "IFERR", "/", "THEN", "0", "ELSE", "1", "END"
+    ], s, {})
+    # 4 / 2 = 2, no error, ELSE branch pushes 1
+    assert s.peek(1).value == 1
+
+
+def test_iferr_with_error():
+    """IFERR: error → THEN (error handler) executes."""
+    s = make_stack(4, 0)
+    execute([
+        "IFERR", "/", "THEN", "999", "END"
+    ], s, {})
+    assert s.peek(1).value == 999
+
+
+def test_iferr_error_else():
+    """IFERR with error — ELSE branch does NOT run."""
+    s = make_stack(4, 0)
+    execute([
+        "IFERR", "/", "THEN", "100", "ELSE", "200", "END"
+    ], s, {})
+    assert s.peek(1).value == 100

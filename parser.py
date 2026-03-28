@@ -1,6 +1,6 @@
 """Tokenizer and parser for RPN input."""
 
-from rpn_types import RPNNumber, RPNString, RPNList, RPNProgram, RPNSymbol
+from rpn_types import RPNNumber, RPNString, RPNList, RPNProgram, RPNSymbol, RPNVector, RPNMatrix
 
 
 def tokenize(line):
@@ -63,6 +63,35 @@ def tokenize(line):
             tokens.append(s[start:i])
             continue
 
+        # Matrix [[ ... ]] or Vector [ ... ]
+        if s[i] == '[':
+            start = i
+            if i + 1 < len(s) and s[i + 1] == '[':
+                # Matrix [[ ... ]]
+                depth = 1
+                i += 2
+                while i < len(s) and depth > 0:
+                    if s[i] == '[' and i + 1 < len(s) and s[i + 1] == '[':
+                        depth += 1
+                        i += 2
+                    elif s[i] == ']' and i + 1 < len(s) and s[i + 1] == ']':
+                        depth -= 1
+                        i += 2
+                    else:
+                        i += 1
+            else:
+                # Vector [ ... ]
+                depth = 1
+                i += 1
+                while i < len(s) and depth > 0:
+                    if s[i] == '[':
+                        depth += 1
+                    elif s[i] == ']':
+                        depth -= 1
+                    i += 1
+            tokens.append(s[start:i])
+            continue
+
         # Quoted symbol 'NAME'
         if s[i] == "'":
             j = i + 1
@@ -76,7 +105,7 @@ def tokenize(line):
 
         # Regular token (number, operator, command name)
         j = i
-        while j < len(s) and not s[j].isspace() and s[j] not in ('{', '}', '«', '»'):
+        while j < len(s) and not s[j].isspace() and s[j] not in ('{', '}', '[', ']', '«', '»'):
             # Check for << or >> as delimiters
             if s[j:j + 2] in ('<<', '>>'):
                 break
@@ -122,6 +151,38 @@ def parse_token(token_str):
         raw_tokens = tokenize(inner)
         items = [parse_token(t) for t in raw_tokens]
         return RPNList(items)
+
+    # Matrix [[ ... ]]
+    if token_str.startswith('[[') and token_str.endswith(']]'):
+        inner = token_str[2:-2].strip()
+        if not inner:
+            return RPNMatrix([])
+        # Split into rows by matching [ ... ]
+        rows = []
+        j = 0
+        while j < len(inner):
+            if inner[j] == '[':
+                k = inner.index(']', j)
+                row_str = inner[j + 1:k].strip()
+                if row_str:
+                    row_tokens = tokenize(row_str)
+                    row = [parse_token(t) for t in row_tokens]
+                    rows.append(row)
+                else:
+                    rows.append([])
+                j = k + 1
+            else:
+                j += 1
+        return RPNMatrix(rows)
+
+    # Vector [ ... ]
+    if token_str.startswith('[') and token_str.endswith(']'):
+        inner = token_str[1:-1].strip()
+        if not inner:
+            return RPNVector([])
+        raw_tokens = tokenize(inner)
+        items = [parse_token(t) for t in raw_tokens]
+        return RPNVector(items)
 
     # Quoted symbol 'NAME' or 'NAME
     if token_str.startswith("'"):

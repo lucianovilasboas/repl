@@ -3,7 +3,8 @@
 import json
 import os
 from rpn_types import (
-    RPNNumber, RPNString, RPNList, RPNProgram, RPNSymbol, RPNObject
+    RPNNumber, RPNString, RPNList, RPNProgram, RPNSymbol, RPNObject,
+    RPNVector, RPNMatrix
 )
 
 STATE_FILE = os.path.join(os.path.expanduser("~"), ".rpn50g_state.json")
@@ -21,6 +22,10 @@ def _serialize(obj):
         return {"type": "program", "value": obj.value}
     elif isinstance(obj, RPNSymbol):
         return {"type": "symbol", "value": obj.value}
+    elif isinstance(obj, RPNVector):
+        return {"type": "vector", "value": [_serialize(item) for item in obj.value]}
+    elif isinstance(obj, RPNMatrix):
+        return {"type": "matrix", "value": [[_serialize(item) for item in row] for row in obj.value]}
     else:
         return {"type": "unknown", "value": str(obj)}
 
@@ -39,6 +44,10 @@ def _deserialize(data):
         return RPNProgram(v)
     elif t == "symbol":
         return RPNSymbol(v)
+    elif t == "vector":
+        return RPNVector([_deserialize(item) for item in v])
+    elif t == "matrix":
+        return RPNMatrix([[_deserialize(item) for item in row] for row in v])
     else:
         return RPNString(str(v))
 

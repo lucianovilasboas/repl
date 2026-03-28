@@ -8,3 +8,4 @@ from ops import logic
 from ops import variables
 from ops import list_ops
 from ops import program
+from ops import matrix

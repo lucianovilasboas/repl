@@ -263,6 +263,210 @@ def execute(tokens, stack, variables, depth=0):
                 iteration += 1
             continue
 
+        # --- → / -> (local variable binding) ---
+        if tok_upper in ("→", "->"):
+            i += 1
+            # Collect local variable names
+            local_vars = []
+            while i < len(tokens):
+                t = tokens[i]
+                # Stop at program body delimiter
+                if isinstance(t, str) and (t.startswith('«') or t.startswith('<<')):
+                    break
+                t_up = t.upper() if isinstance(t, str) else ""
+                # Variable names are simple alphabetic identifiers
+                if isinstance(t, str) and t.replace('_', '').isalnum() and len(t) > 0 and not t[0].isdigit():
+                    local_vars.append(t_up)
+                    i += 1
+                else:
+                    break
+
+            if not local_vars:
+                raise RPNError("Missing variable names after →")
+
+            # Determine body: explicit program token or remaining tokens
+            if i < len(tokens):
+                t = tokens[i]
+                if isinstance(t, str) and (t.startswith('«') or t.startswith('<<')):
+                    body_prog = parse_token(t)
+                    if not isinstance(body_prog, RPNProgram):
+                        raise RPNError("Expected program body after → variables")
+                    body_tokens = body_prog.value
+                    i += 1
+                else:
+                    # All remaining tokens form the body
+                    body_tokens = list(tokens[i:])
+                    i = len(tokens)
+            else:
+                raise RPNError("Missing program body after → variables")
+
+            # Pop values from stack (deepest → first variable)
+            n = len(local_vars)
+            require_args(stack, n)
+            values = [stack.pop() for _ in range(n)]
+            values.reverse()
+
+            # Save old variable values and set locals
+            saved = {}
+            for name, val in zip(local_vars, values):
+                if name in variables:
+                    saved[name] = variables[name]
+                variables[name] = val
+
+            try:
+                execute(body_tokens, stack, variables, depth + 1)
+            finally:
+                for name in local_vars:
+                    if name in saved:
+                        variables[name] = saved[name]
+                    elif name in variables:
+                        del variables[name]
+            continue
+
+        # --- CASE / THEN / END ---
+        if tok_upper == "CASE":
+            i += 1
+            entries = []       # list of (cond_tokens, body_tokens)
+            default_tokens = []
+
+            while i < len(tokens):
+                # Look ahead for THEN at nesting level 0
+                j = i
+                nest = 0
+                found_then = False
+
+                while j < len(tokens):
+                    t = tokens[j].upper() if isinstance(tokens[j], str) else ""
+                    if t in ("IF", "CASE", "DO", "WHILE", "FOR", "START"):
+                        nest += 1
+                    elif t == "END":
+                        if nest > 0:
+                            nest -= 1
+                        else:
+                            break  # outer CASE END, no THEN found
+                    elif t == "THEN" and nest == 0:
+                        found_then = True
+                        break
+                    j += 1
+
+                if found_then:
+                    cond_tokens = list(tokens[i:j])
+                    i = j + 1  # skip THEN
+
+                    # Collect body until END at nesting level 0
+                    body_tokens = []
+                    nest = 0
+                    while i < len(tokens):
+                        t = tokens[i].upper() if isinstance(tokens[i], str) else ""
+                        if t in ("IF", "CASE", "DO", "WHILE", "FOR", "START"):
+                            nest += 1
+                        if t == "END":
+                            if nest > 0:
+                                nest -= 1
+                                body_tokens.append(tokens[i])
+                                i += 1
+                            else:
+                                i += 1  # skip END
+                                break
+                        else:
+                            body_tokens.append(tokens[i])
+                            i += 1
+
+                    entries.append((cond_tokens, body_tokens))
+                else:
+                    # Default action: remaining tokens until final END
+                    nest = 0
+                    while i < len(tokens):
+                        t = tokens[i].upper() if isinstance(tokens[i], str) else ""
+                        if t in ("IF", "CASE", "DO", "WHILE", "FOR", "START"):
+                            nest += 1
+                        if t == "END":
+                            if nest > 0:
+                                nest -= 1
+                                default_tokens.append(tokens[i])
+                                i += 1
+                            else:
+                                i += 1  # skip final END
+                                break
+                        else:
+                            default_tokens.append(tokens[i])
+                            i += 1
+                    break
+
+            # Execute: first matching case wins
+            matched = False
+            for cond_toks, body_toks in entries:
+                execute(cond_toks, stack, variables, depth + 1)
+                require_args(stack, 1)
+                cond_val = stack.pop()
+                if isinstance(cond_val, RPNNumber) and cond_val.value != 0:
+                    execute(body_toks, stack, variables, depth + 1)
+                    matched = True
+                    break
+
+            if not matched and default_tokens:
+                execute(default_tokens, stack, variables, depth + 1)
+
+            continue
+
+        # --- IFERR / THEN / ELSE / END ---
+        if tok_upper == "IFERR":
+            i += 1
+            # Collect trap clause until THEN
+            trap_tokens = []
+            nest = 1
+            while i < len(tokens):
+                t = tokens[i].upper() if isinstance(tokens[i], str) else ""
+                if t in ("IF", "IFERR"):
+                    nest += 1
+                if t == "THEN" and nest == 1:
+                    break
+                if t == "END":
+                    nest -= 1
+                trap_tokens.append(tokens[i])
+                i += 1
+            if i >= len(tokens):
+                raise RPNError("Missing THEN after IFERR")
+            i += 1  # skip THEN
+
+            # Collect error handler and optional ELSE (normal) branch
+            error_tokens = []
+            normal_tokens = []
+            in_else = False
+            nest = 1
+            while i < len(tokens):
+                t = tokens[i].upper() if isinstance(tokens[i], str) else ""
+                if t in ("IF", "IFERR"):
+                    nest += 1
+                if t == "END":
+                    nest -= 1
+                    if nest == 0:
+                        i += 1
+                        break
+                if t == "ELSE" and nest == 1:
+                    in_else = True
+                    i += 1
+                    continue
+                if in_else:
+                    normal_tokens.append(tokens[i])
+                else:
+                    error_tokens.append(tokens[i])
+                i += 1
+
+            # Execute trap clause; if error, run error handler
+            had_error = False
+            try:
+                execute(trap_tokens, stack, variables, depth + 1)
+            except (RPNError, Exception):
+                had_error = True
+
+            if had_error:
+                execute(error_tokens, stack, variables, depth + 1)
+            elif normal_tokens:
+                execute(normal_tokens, stack, variables, depth + 1)
+
+            continue
+
         # --- Regular token: parse and dispatch ---
         parsed = parse_token(tok)
         dispatch(parsed, stack, variables, executor)

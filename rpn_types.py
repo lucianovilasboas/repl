@@ -105,6 +105,64 @@ class RPNSymbol(RPNObject):
         return f"RPNSymbol('{self.value}')"
 
 
+class RPNVector(RPNObject):
+    """Vector delimited by [ ]. Stores a list of RPNNumber."""
+
+    def __init__(self, items=None):
+        self.value = list(items) if items else []
+
+    def rpn_repr(self):
+        inner = " ".join(item.rpn_repr() for item in self.value)
+        return "[ " + inner + " ]"
+
+    def __repr__(self):
+        return f"RPNVector({self.value})"
+
+    def _hashable(self):
+        return tuple(self.value)
+
+    def __len__(self):
+        return len(self.value)
+
+    def dimension(self):
+        return len(self.value)
+
+
+class RPNMatrix(RPNObject):
+    """Matrix represented as [[ row1 ][ row2 ]...]. Stores list of lists of RPNNumber."""
+
+    def __init__(self, rows=None):
+        self.value = [list(row) for row in rows] if rows else []
+
+    def rpn_repr(self):
+        row_strs = []
+        for row in self.value:
+            inner = " ".join(item.rpn_repr() for item in row)
+            row_strs.append("[ " + inner + " ]")
+        return "[[ " + " ".join(row_strs) + " ]]" if row_strs else "[[ ]]"
+
+    def __repr__(self):
+        return f"RPNMatrix({self.value})"
+
+    def _hashable(self):
+        return tuple(tuple(row) for row in self.value)
+
+    def rows(self):
+        return len(self.value)
+
+    def cols(self):
+        return len(self.value[0]) if self.value else 0
+
+    def shape(self):
+        return (self.rows(), self.cols())
+
+    def get(self, r, c):
+        return self.value[r][c]
+
+    def set(self, r, c, val):
+        self.value[r][c] = val
+
+
 def rpn_copy(obj):
     """Deep copy an RPN object."""
     return copy.deepcopy(obj)

@@ -98,10 +98,24 @@ def display_calculator(stack, variables, lines=4, num_format="STD",
         fmt_label = f"{num_format} {fix_digits}"
     status_l = f"{angle_mode}  {fmt_label}"
     status_r = "{ HOME }"
-    gap = W - 2 - len(status_l) - len(status_r)
-    if gap < 1:
-        gap = 1
-    header = f"  ║ {status_l}{' ' * gap}{status_r} ║"
+    if error_msg:
+        err_text = f">> {error_msg}"
+        # space available between status_l + separator and status_r
+        max_err = W - 2 - len(status_l) - 3 - len(status_r) - 1
+        if max_err < 1:
+            max_err = 1
+        if len(err_text) > max_err:
+            err_text = err_text[:max_err - 1] + "\u2026"
+        mid = f" {err_text}"
+        gap = W - 2 - len(status_l) - len(mid) - len(status_r)
+        if gap < 1:
+            gap = 1
+        header = f"  ║ {status_l}{mid}{' ' * gap}{status_r} ║"
+    else:
+        gap = W - 2 - len(status_l) - len(status_r)
+        if gap < 1:
+            gap = 1
+        header = f"  ║ {status_l}{' ' * gap}{status_r} ║"
 
     # ── Stack levels ─────────────────────────────────────────────
     data = stack.to_list()
@@ -117,15 +131,6 @@ def display_calculator(stack, variables, lines=4, num_format="STD",
             vs = vs[:val_w - 1] + "\u2026"
         rows.append(f"  ║ {lvl:>2}: {vs:>{val_w}} ║")
 
-    # ── Error line ───────────────────────────────────────────────
-    err_row = None
-    if error_msg:
-        et = f">> {error_msg}"
-        max_e = W - 2
-        if len(et) > max_e:
-            et = et[:max_e - 1] + "\u2026"
-        err_row = f"  ║ {et:<{W - 2}} ║"
-
     # ── Soft-key bar (variables) ─────────────────────────────────
     names = list(variables.keys())[:6]
     names += [""] * (6 - len(names))
@@ -137,8 +142,6 @@ def display_calculator(stack, variables, lines=4, num_format="STD",
     # ── Assemble ─────────────────────────────────────────────────
     out = [top, header, sep]
     out.extend(rows)
-    if err_row:
-        out.append(err_row)
     out.extend([sk_top, sk_mid, sk_bot])
 
     return "\n".join(out)

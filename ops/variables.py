@@ -57,12 +57,10 @@ def op_purge(stack, variables, executor):
 
 @register("VARS")
 def op_vars(stack, variables, executor):
-    """List all variable names — prints to console."""
-    if not variables:
-        print("  (no variables)")
-    else:
-        for name, val in sorted(variables.items()):
-            print(f"  {name}: {val.rpn_repr()}")
+    """Push a list of variable names onto the stack."""
+    from rpn_types import RPNList, RPNString
+    names = sorted(variables.keys())
+    stack.push(RPNList([RPNString(n) for n in names]))
 
 
 @register("SNEG")

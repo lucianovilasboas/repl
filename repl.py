@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HP 50g RPN Calculator Simulator — REPL entry point."""
+"""MyRPN Calculator Simulator — REPL entry point."""
 
 import sys
 import os
@@ -147,7 +147,7 @@ def executor(prog_tokens, stack, variables):
     execute(prog_tokens, stack, variables)
 
 
-TITLE = "  HP 50g RPN Simulator · HELP | UNDO | QUIT"
+TITLE = "  MyRPN Simulator · HELP | UNDO | QUIT"
 
 
 def show_stack(stack, error_msg=None):

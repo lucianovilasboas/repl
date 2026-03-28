@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HP 50g RPN Calculator — GUI interface using tkinter."""
+"""MyRPN Calculator — GUI interface using tkinter."""
 
 import sys
 import os
@@ -49,11 +49,11 @@ C = {
 
 
 class HP50gGUI:
-    """Tkinter GUI for the HP 50g RPN simulator."""
+    """Tkinter GUI for the MyRPN simulator."""
 
     def __init__(self, root):
         self.root = root
-        self.root.title("HP 50g RPN Calculator")
+        self.root.title("MyRPN Calculator")
         self.root.configure(bg=C["bg"])
         self.root.resizable(False, False)
 

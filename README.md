@@ -1,6 +1,6 @@
-# HP 50g RPN Calculator Simulator
+# MyRPN Calculator Simulator
 
-Simulador da calculadora **HP 50g** em modo **RPN** (Reverse Polish Notation), implementado em Python como um REPL interativo de linha de comando.
+Simulador de calculadora **RPN** (Reverse Polish Notation) inspirado na HP 50g, implementado em Python como um REPL interativo de linha de comando.
 
 ## Funcionalidades
 
@@ -47,7 +47,7 @@ python repl.py
 Ao iniciar, o REPL exibe o visor da calculadora HP 50g:
 
 ```
-  HP 50g RPN Simulator · HELP | UNDO | QUIT
+  MyRPN Simulator · HELP | UNDO | QUIT
   ╔═══════════════════════════════════════════════╗
   ║ RAD  STD                             { HOME } ║
   ╟───────────────────────────────────────────────╢
@@ -314,10 +314,77 @@ rpn/
 │   │   └── operations.py — Descoberta de operações (público)
 │   └── tests/        — Testes da API (pytest-asyncio)
 ├── tests/            — Testes unitários do core (pytest)
-└── requirements.txt
+├── requirements.txt
+├── Dockerfile        — Build multi-stage (Python 3.12-slim)
+├── docker-compose.yml — Orquestração do container
+└── .dockerignore     — Arquivos excluídos do build
 ```
 
-## Persistência
+## Docker
+
+O projeto pode ser executado em container Docker, ideal para deploy da API REST.
+
+### Requisitos
+
+- Docker
+- Docker Compose
+
+### Subir o container
+
+```bash
+# Build e start
+docker compose up -d
+
+# Ver logs
+docker compose logs -f api
+
+# Parar
+docker compose down
+```
+
+A API estará disponível em `http://localhost:8000` (docs em `/docs`).
+
+### Configuração
+
+Variáveis de ambiente podem ser definidas antes de subir o container:
+
+```bash
+# Gerar chave secreta segura
+export RPN_SECRET_KEY=$(openssl rand -hex 32)
+
+# Subir com a chave definida
+docker compose up -d
+```
+
+Ou via arquivo `.env` na raiz do projeto:
+
+```env
+RPN_SECRET_KEY=sua-chave-secreta-aqui
+RPN_CORS_ORIGINS=["https://meuapp.com"]
+```
+
+### Persistência
+
+O banco SQLite é armazenado em um volume Docker nomeado (`rpn_data`), persistente entre reinicializações do container.
+
+```bash
+# Ver volumes
+docker volume ls
+
+# Remover volume (apaga o banco!)
+docker volume rm repl_rpn_data
+```
+
+### Build manual da imagem
+
+```bash
+docker build -t rpn-calculator-api .
+docker run -p 8000:8000 -e RPN_SECRET_KEY=minha-chave rpn-calculator-api
+```
+
+---
+
+## Persistência (CLI)
 
 O estado (stack, variáveis e configurações) é salvo automaticamente ao sair com `QUIT` e restaurado ao reiniciar. Os arquivos ficam em:
 

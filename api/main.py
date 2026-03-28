@@ -28,9 +28,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="HP 50g RPN Calculator API",
+    title="MyRPN Calculator API",
     description=(
-        "REST API for the HP 50g RPN Calculator Simulator. "
+        "REST API for the MyRPN Calculator Simulator. "
         "Supports all 130+ operations: arithmetic, scientific, stack manipulation, "
         "lists, vectors, matrices, programs, variables, and more."
     ),
@@ -63,4 +63,4 @@ app.include_router(operations.router)
 
 @app.get("/", tags=["root"])
 async def root():
-    return {"message": "HP 50g RPN Calculator API", "docs": "/docs"}
+    return {"message": "MyRPN Calculator API", "docs": "/docs"}

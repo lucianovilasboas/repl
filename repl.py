@@ -139,11 +139,11 @@ def show_stack(stack, error_msg=None):
     """Clear screen and redraw banner + stack display at the top."""
     clear_screen()
     print(BANNER)
+    if error_msg:
+        print(f"  Error: {error_msg}")
     angle = get_angle_mode()
     print(display_header(angle, _settings.num_format, _settings.fix_digits))
     print(display_stack(stack, _settings.stack_lines, _settings.num_format, _settings.fix_digits))
-    if error_msg:
-        print(f"\n  Error: {error_msg}")
 
 
 BANNER = r"""

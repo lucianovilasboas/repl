@@ -18,7 +18,7 @@ from ops.program import execute
 import ops  # noqa: F401
 
 # ── Reuse Settings / display-mode ops from main (import triggers @register) ──
-from main import Settings, get_angle_mode
+from repl import Settings, get_angle_mode
 
 
 # ══════════════════════════════════════════════════════════════════════════════

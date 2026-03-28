@@ -40,7 +40,7 @@ pip install -r requirements.txt
 ## Uso
 
 ```bash
-python main.py
+python repl.py
 ```
 
 Ao iniciar, o REPL exibe a stack no estilo HP 50g:

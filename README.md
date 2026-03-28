@@ -4,7 +4,7 @@ Simulador da calculadora **HP 50g** em modo **RPN** (Reverse Polish Notation), i
 
 ## Funcionalidades
 
-- **Stack infinita** com display de 4 níveis (estilo HP 50g: `4: 3: 2: 1:`)
+- **Stack infinita** com display estilo HP 50g (visor com moldura, barra de status, soft-keys de variáveis)
 - **Aritmética**: `+`, `-`, `*`, `/`, `NEG`, `ABS`, `MOD`, `IP`, `FP`, `MIN`, `MAX`, `SIGN`, `%`, `FLOOR`, `CEIL`
 - **Científico**: `SIN`, `COS`, `TAN`, `ASIN`, `ACOS`, `ATAN`, `LOG`, `LN`, `EXP`, `SQRT`, `SQ`, `^`, `INV`, `!`, `PI`, `SINH`, `COSH`, `TANH`, `D->R`, `R->D`, `XROOT`, `ALOG`
 - **Manipulação de stack**: `DUP`, `DROP`, `SWAP`, `OVER`, `ROT`, `ROLL`, `PICK`, `DEPTH`, `CLEAR`, `DUP2`, `DROP2`, `DUPN`, `DROPN`, `NDUP`, `UNROT`, `ROLLD`
@@ -19,6 +19,7 @@ Simulador da calculadora **HP 50g** em modo **RPN** (Reverse Polish Notation), i
 - **Programas RPL**: `<< >>` ou `« »`, `EVAL`, `IF/THEN/ELSE/END`, `FOR/NEXT/STEP`, `START/NEXT/STEP`, `WHILE/REPEAT/END`, `DO/UNTIL/END`, `CASE/THEN/END`, `IFERR/THEN/ELSE/END`, `→` / `->` (variáveis locais)
 - **Modos angulares**: `DEG`, `RAD`, `GRAD`
 - **Formato de exibição**: `FIX n`, `SCI n`, `ENG n`, `STD`
+- **Níveis visíveis da stack**: `STKL` (ex: `8 STKL` para exibir 8 níveis, padrão 4)
 - **UNDO** (desfazer última operação)
 - **Persistência** automática de stack, variáveis e configurações entre sessões
 - **Histórico de comandos** com setas cima/baixo
@@ -43,26 +44,25 @@ pip install -r requirements.txt
 python repl.py
 ```
 
-Ao iniciar, o REPL exibe a stack no estilo HP 50g:
+Ao iniciar, o REPL exibe o visor da calculadora HP 50g:
 
 ```
-  ╔═══════════════════════════════════════════╗
-  ║         HP 50g RPN Simulator (MVP)        ║
-  ║                                           ║
-  ║  Type RPN expressions. Commands:          ║
-  ║    HELP  — list all operations            ║
-  ║    UNDO  — undo last operation            ║
-  ║    QUIT  — save and exit                  ║
-  ╚═══════════════════════════════════════════╝
-
-  { RAD STD }
-  4:
-  3:
-  2:
-  1:
+  HP 50g RPN Simulator · HELP | UNDO | QUIT
+  ╔═══════════════════════════════════════════════╗
+  ║ RAD  STD                             { HOME } ║
+  ╟───────────────────────────────────────────────╢
+  ║  4:                                           ║
+  ║  3:                                           ║
+  ║  2:                                           ║
+  ║  1:                                           ║
+  ╠═══════╤═══════╤═══════╤═══════╤═══════╤═══════╣
+  ║       │       │       │       │       │       ║
+  ╚═══════╧═══════╧═══════╧═══════╧═══════╧═══════╝
 
 >
 ```
+
+A barra inferior (soft-keys) exibe automaticamente as variáveis definidas, como na calculadora real.
 
 ### Exemplos
 
@@ -243,14 +243,20 @@ O operador `→` (ou `->`) captura valores da stack em variáveis locais, execut
 | Comando | Descrição |
 |---------|-----------|
 | `HELP`  | Lista todas as operações disponíveis |
-| `UNDO`  | Desfaz a última operação |
-| `QUIT` / `EXIT` / `Q` | Salva estado e encerra |
+| `UNDO`  | Desfaz a última operação || `n STKL` | Define o número de níveis visíveis na stack (1–32, padrão 4) || `QUIT` / `EXIT` / `Q` | Salva estado e encerra |
 | `↑` / `↓` | Navega pelo histórico de comandos |
 
 ## Testes
 
 ```bash
+# Testes do core da calculadora
 python -m pytest tests/ -v
+
+# Testes da API REST
+python -m pytest api/tests/ -v
+
+# Todos os testes
+python -m pytest tests/ api/tests/ -v
 ```
 
 ```
@@ -262,20 +268,24 @@ tests/test_programs.py    ✓ 23 tests
 tests/test_scientific.py  ✓ 15 tests
 tests/test_stack.py       ✓  8 tests
 tests/test_variables.py   ✓  6 tests
+api/tests/test_auth.py    ✓  6 tests
+api/tests/test_calculate.py ✓ 13 tests
+api/tests/test_operations.py ✓  8 tests
+api/tests/test_sessions.py  ✓  9 tests
                           ─────────
-                         155 passed
+                         191 passed
 ```
 
 ## Estrutura do Projeto
 
 ```
 rpn/
-├── main.py           — REPL interativo (entry point)
+├── repl.py           — REPL interativo (entry point)
 ├── rpn_types.py      — Sistema de tipos (RPNNumber, RPNString, RPNList, RPNProgram, RPNSymbol, RPNVector, RPNMatrix)
 ├── stack.py          — Engine da stack RPN
 ├── parser.py         — Tokenizer/parser de entrada
 ├── operations.py     — Registry de operações + dispatch
-├── display.py        — Formatação estilo HP 50g
+├── display.py        — Formatação e visor estilo HP 50g
 ├── state.py          — Persistência em JSON (~/.rpn50g_state.json)
 ├── ops/
 │   ├── arithmetic.py — Operações aritméticas
@@ -287,7 +297,23 @@ rpn/
 │   ├── list_ops.py   — Operações com listas
 │   ├── matrix.py     — Operações com vetores e matrizes
 │   └── program.py    — Interpretador RPL (programas + estruturas de controle)
-├── tests/            — Testes unitários (pytest)
+├── api/
+│   ├── main.py       — FastAPI app factory (entry point da API)
+│   ├── config.py     — Configuração via variáveis de ambiente
+│   ├── database.py   — Async SQLAlchemy engine (SQLite)
+│   ├── models.py     — ORM: User, CalcSession
+│   ├── schemas.py    — Pydantic request/response schemas
+│   ├── auth.py       — JWT + bcrypt password hashing
+│   ├── calculator.py — Bridge entre API e core da calculadora
+│   ├── dependencies.py — FastAPI Depends (auth, session loading)
+│   ├── routers/
+│   │   ├── auth.py       — Register, login, refresh
+│   │   ├── sessions.py   — CRUD de sessões
+│   │   ├── calculate.py  — Execute e undo
+│   │   ├── stack.py      — Push, get, clear
+│   │   └── operations.py — Descoberta de operações (público)
+│   └── tests/        — Testes da API (pytest-asyncio)
+├── tests/            — Testes unitários do core (pytest)
 └── requirements.txt
 ```
 
@@ -305,3 +331,154 @@ O estado (stack, variáveis e configurações) é salvo automaticamente ao sair 
 - Gráficos
 - Precisão arbitrária (usa float/int nativo do Python)
 - Comunicação serial / USB com calculadora real
+
+---
+
+## REST API
+
+O projeto inclui uma **API REST** completa construída com **FastAPI**, permitindo integrar a calculadora RPN em aplicações web, mobile ou qualquer cliente HTTP.
+
+### Iniciar o servidor
+
+```bash
+# Instalar dependências (se ainda não fez)
+pip install -r requirements.txt
+
+# Iniciar o servidor
+uvicorn api.main:app --reload
+
+# O servidor estará em http://localhost:8000
+# Documentação interativa: http://localhost:8000/docs (Swagger UI)
+# Documentação alternativa: http://localhost:8000/redoc
+```
+
+### Autenticação
+
+A API usa **JWT (JSON Web Tokens)** com tokens de acesso e refresh.
+
+```bash
+# Registrar um usuário
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "demo", "email": "demo@example.com", "password": "secret123"}'
+
+# Login (retorna access_token e refresh_token)
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "demo", "password": "secret123"}'
+
+# Usar o token nas requisições autenticadas
+export TOKEN="<access_token_recebido>"
+```
+
+### Sessões de cálculo
+
+Cada usuário pode ter múltiplas sessões independentes, cada uma com sua própria stack, variáveis e configurações.
+
+```bash
+# Criar uma sessão
+curl -X POST http://localhost:8000/sessions \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "minha_calc"}'
+
+# Listar sessões
+curl http://localhost:8000/sessions -H "Authorization: Bearer $TOKEN"
+```
+
+### Executar expressões RPN
+
+```bash
+# Calcular 3 4 + DUP *  →  49
+curl -X POST http://localhost:8000/sessions/{session_id}/execute \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "3 4 + DUP *"}'
+
+# Desfazer última operação
+curl -X POST http://localhost:8000/sessions/{session_id}/undo \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Manipulação direta da stack
+
+```bash
+# Ver a stack atual
+curl http://localhost:8000/sessions/{session_id}/stack \
+  -H "Authorization: Bearer $TOKEN"
+
+# Push de um valor
+curl -X POST http://localhost:8000/sessions/{session_id}/stack/push \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"value": 42, "type": "number"}'
+
+# Push de um vetor
+curl -X POST http://localhost:8000/sessions/{session_id}/stack/push \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"value": [1, 2, 3], "type": "vector"}'
+
+# Limpar a stack
+curl -X DELETE http://localhost:8000/sessions/{session_id}/stack \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Descoberta de operações (público, sem autenticação)
+
+```bash
+# Listar categorias
+curl http://localhost:8000/operations/categories
+
+# Listar operações (com filtros e paginação)
+curl "http://localhost:8000/operations?category=arithmetic&limit=10"
+
+# Buscar por nome
+curl "http://localhost:8000/operations?q=SIN"
+
+# Detalhes de uma operação
+curl http://localhost:8000/operations/DUP
+```
+
+### Endpoints da API
+
+| Método | Endpoint | Auth | Descrição |
+|--------|----------|------|-----------|
+| `POST` | `/auth/register` | Não | Registrar novo usuário |
+| `POST` | `/auth/login` | Não | Login (retorna JWT) |
+| `POST` | `/auth/refresh` | Não | Renovar token de acesso |
+| `POST` | `/sessions` | Sim | Criar sessão de cálculo |
+| `GET` | `/sessions` | Sim | Listar sessões do usuário |
+| `GET` | `/sessions/{id}` | Sim | Detalhes da sessão (stack, vars, settings) |
+| `DELETE` | `/sessions/{id}` | Sim | Remover sessão |
+| `POST` | `/sessions/{id}/reset` | Sim | Resetar sessão |
+| `PATCH` | `/sessions/{id}/settings` | Sim | Atualizar modo angular/formato |
+| `POST` | `/sessions/{id}/execute` | Sim | Executar expressão RPN |
+| `POST` | `/sessions/{id}/undo` | Sim | Desfazer última operação |
+| `GET` | `/sessions/{id}/stack` | Sim | Ver stack atual |
+| `POST` | `/sessions/{id}/stack/push` | Sim | Push de valor tipado |
+| `DELETE` | `/sessions/{id}/stack` | Sim | Limpar stack |
+| `GET` | `/operations/categories` | Não | Listar categorias de operações |
+| `GET` | `/operations` | Não | Listar operações (filtro, busca, paginação) |
+| `GET` | `/operations/{name}` | Não | Detalhes de uma operação |
+
+### Configuração
+
+Variáveis de ambiente (prefixo `RPN_`):
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `RPN_SECRET_KEY` | auto-gerado | Chave secreta para JWT |
+| `RPN_DATABASE_URL` | `sqlite+aiosqlite:///./rpn_api.db` | URL do banco de dados |
+| `RPN_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Validade do token de acesso |
+| `RPN_CORS_ORIGINS` | `["*"]` | Origens CORS permitidas |
+
+### Testes da API
+
+```bash
+# Executar testes da API
+python -m pytest api/tests/ -v
+
+# Executar todos os testes (core + API)
+python -m pytest tests/ api/tests/ -v
+```

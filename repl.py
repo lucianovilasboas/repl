@@ -11,7 +11,7 @@ from stack import Stack, StackUnderflowError
 from parser import parse
 from operations import dispatch, RPNError, register, list_operations
 from rpn_types import RPNObject, RPNProgram, RPNNumber
-from display import display_stack, display_header
+from display import display_calculator
 from state import save_state, load_state
 from ops.program import execute
 
@@ -79,9 +79,21 @@ def op_std(stack, variables, executor):
     _settings.fix_digits = None
 
 
+@register("STKL")
+def op_stkl(stack, variables, executor):
+    """Set the number of visible stack levels (1–32)."""
+    from operations import require_args, require_type
+    require_args(stack, 1)
+    n = stack.pop()
+    require_type(n, RPNNumber)
+    val = max(1, min(32, int(n.value)))
+    _settings.stack_lines = val
+
+
 # Global settings instance
 _settings = Settings()
 _undo_stack = []
+_variables = {}  # module-level ref to main variables dict
 
 
 HISTORY_FILE = os.path.join(os.path.expanduser("~"), ".rpn50g_history")
@@ -135,27 +147,19 @@ def executor(prog_tokens, stack, variables):
     execute(prog_tokens, stack, variables)
 
 
+TITLE = "  HP 50g RPN Simulator · HELP | UNDO | QUIT"
+
+
 def show_stack(stack, error_msg=None):
-    """Clear screen and redraw banner + stack display at the top."""
+    """Clear screen and redraw the HP 50g calculator display."""
     clear_screen()
-    print(BANNER)
-    if error_msg:
-        print(f"  Error: {error_msg}")
+    print(TITLE)
     angle = get_angle_mode()
-    print(display_header(angle, _settings.num_format, _settings.fix_digits))
-    print(display_stack(stack, _settings.stack_lines, _settings.num_format, _settings.fix_digits))
-
-
-BANNER = r"""
-  ╔═══════════════════════════════════════════╗
-  ║         HP 50g RPN Simulator (MVP)        ║
-  ║                                           ║
-  ║  Type RPN expressions. Commands:          ║
-  ║    HELP  — list all operations            ║
-  ║    UNDO  — undo last operation            ║
-  ║    QUIT  — save and exit                  ║
-  ╚═══════════════════════════════════════════╝
-"""
+    print(display_calculator(
+        stack, _variables, _settings.stack_lines,
+        _settings.num_format, _settings.fix_digits,
+        angle, error_msg,
+    ))
 
 
 def cmd_help():
@@ -176,13 +180,14 @@ def cmd_help():
 
 
 def main():
-    global _settings
+    global _settings, _variables
 
     readline_mod = setup_readline()
 
     # Initialize
     stack = Stack()
-    variables = {}
+    _variables = {}
+    variables = _variables  # local alias (same dict object)
 
     # Load saved state
     stack_items, saved_vars, saved_settings = load_state()

@@ -155,12 +155,13 @@ def executor(prog_tokens, stack, variables):
 TITLE = "  MyRPN Simulator · HELP | UNDO | QUIT"
 
 
-def show_stack(stack, error_msg=None):
+def show_stack(username, stack, error_msg=None):
     """Clear screen and redraw the HP 50g calculator display."""
     clear_screen()
     print(TITLE)
     angle = get_angle_mode()
     print(display_calculator(
+        username,
         stack, _variables, _settings.stack_lines,
         _settings.num_format, _settings.fix_digits,
         angle, error_msg,
@@ -216,6 +217,7 @@ def login_screen():
             return _register_flow()
 
         if choice in ("L", "LOGIN", ""):
+            global user
             user = _login_flow()
             if user is not None:
                 return user
@@ -386,7 +388,7 @@ def main():
                 except Exception:
                     pass
 
-        show_stack(stack)
+        show_stack(user.username, stack)
 
         # ── Main REPL loop ───────────────────────────────────────
         go_to_sessions = False
@@ -403,7 +405,7 @@ def main():
                 return
 
             if not line:
-                show_stack(stack)
+                show_stack(user.username, stack)
                 continue
 
             upper_line = line.upper().strip()
@@ -427,7 +429,7 @@ def main():
             if upper_line == "HELP":
                 cmd_help()
                 input("\n  Press Enter to continue...")
-                show_stack(stack)
+                show_stack(user.username, stack)
                 continue
 
             if upper_line == "UNDO":
@@ -435,9 +437,9 @@ def main():
                     snapshot = _undo_stack.pop()
                     stack.restore(snapshot)
                     _persist(session_id, stack, variables)
-                    show_stack(stack)
+                    show_stack(user.username, stack)
                 else:
-                    show_stack(stack, error_msg="Nothing to undo")
+                    show_stack(user.username, stack, error_msg="Nothing to undo")
                 continue
 
             # Save snapshot for UNDO
@@ -454,17 +456,17 @@ def main():
                 _settings.angle_mode = get_angle_mode()
 
             except RPNError as e:
-                show_stack(stack, error_msg=str(e))
+                show_stack(user.username, stack, error_msg=str(e))
                 continue
             except StackUnderflowError as e:
-                show_stack(stack, error_msg=str(e))
+                show_stack(user.username, stack, error_msg=str(e))
                 continue
             except Exception as e:
-                show_stack(stack, error_msg=str(e))
+                show_stack(user.username, stack, error_msg=str(e))
                 continue
 
             _persist(session_id, stack, variables)
-            show_stack(stack)
+            show_stack(user.username, stack)
 
         if go_to_logout:
             user = login_screen()

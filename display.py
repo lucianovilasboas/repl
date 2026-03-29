@@ -76,7 +76,7 @@ _W = 47  # inner width between ║ chars
 _COL = 7  # soft-key column width (6 × 7 + 5 separators = 47)
 
 
-def display_calculator(stack, variables, lines=4, num_format="STD",
+def display_calculator(username, stack, variables, lines=4, num_format="STD",
                        fix_digits=None, angle_mode="RAD", error_msg=None):
     """Render the full HP 50g calculator display.
 
@@ -97,7 +97,7 @@ def display_calculator(stack, variables, lines=4, num_format="STD",
     if num_format != "STD" and fix_digits is not None:
         fmt_label = f"{num_format} {fix_digits}"
     status_l = f"{angle_mode}  {fmt_label}"
-    status_r = "{ HOME }"
+    status_r = f"{ {username} }"
     if error_msg:
         err_text = f">> {error_msg}"
         # space available between status_l + separator and status_r

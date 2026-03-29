@@ -3,6 +3,7 @@
 
 import sys
 import os
+import getpass
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -12,8 +13,12 @@ from parser import parse
 from operations import dispatch, RPNError, register, list_operations
 from rpn_types import RPNObject, RPNProgram, RPNNumber
 from display import display_calculator
-from state import save_state, load_state
 from ops.program import execute
+from db_sync import (
+    init_sync_db, find_user, create_user, verify_user,
+    list_sessions, create_session, delete_session,
+    save_session, load_session_state, get_session,
+)
 
 # Import ops package to register all operations
 import ops  # noqa: F401
@@ -179,94 +184,295 @@ def cmd_help():
     print()
 
 
+# ── Persistence helper ───────────────────────────────────────────────
+
+def _persist(session_id, stack, variables):
+    """Save current calculator state to the database."""
+    _settings.angle_mode = get_angle_mode()
+    save_session(session_id, stack, variables, _settings.to_dict(), _undo_stack)
+
+
+# ── Login screen ─────────────────────────────────────────────────────
+
+def login_screen():
+    """Interactive login / register prompt. Returns User or None."""
+    clear_screen()
+    print()
+    print("  ╔═══════════════════════════════════════════════╗")
+    print("  ║            MyRPN Simulator · Login            ║")
+    print("  ╚═══════════════════════════════════════════════╝")
+    print()
+
+    for _ in range(3):
+        try:
+            choice = input("  [L]ogin  [R]egister  [Q]uit : ").strip().upper()
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+        if choice in ("Q", "QUIT"):
+            return None
+
+        if choice in ("R", "REGISTER"):
+            return _register_flow()
+
+        if choice in ("L", "LOGIN", ""):
+            user = _login_flow()
+            if user is not None:
+                return user
+            # wrong password — try again
+
+    print("  Too many attempts.")
+    return None
+
+
+def _login_flow():
+    try:
+        username = input("  Username: ").strip()
+        if not username:
+            return None
+        password = getpass.getpass("  Password: ")
+    except (EOFError, KeyboardInterrupt):
+        return None
+    user = verify_user(username, password)
+    if user is None:
+        print("  ✗ Invalid username or password.\n")
+    return user
+
+
+def _register_flow():
+    try:
+        print()
+        username = input("  Choose username: ").strip()
+        if not username:
+            print("  ✗ Username cannot be empty.\n")
+            return None
+        if find_user(username):
+            print("  ✗ Username already taken.\n")
+            return None
+        email = input("  Email: ").strip()
+        password = getpass.getpass("  Password: ")
+        password2 = getpass.getpass("  Confirm password: ")
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+    if password != password2:
+        print("  ✗ Passwords do not match.\n")
+        return None
+    if len(password) < 4:
+        print("  ✗ Password must be at least 4 characters.\n")
+        return None
+
+    user = create_user(username, email, password)
+    print(f"  ✓ User '{username}' created.\n")
+    return user
+
+
+# ── Session screen ───────────────────────────────────────────────────
+
+def session_screen(user):
+    """Show session list, let user pick / create / delete. Returns session dict or None (logout)."""
+    while True:
+        clear_screen()
+        sessions = list_sessions(user.id)
+        print()
+        print(f"  ╔═══════════════════════════════════════════════╗")
+        print(f"  ║  Sessions for {user.username:<32} ║")
+        print(f"  ╚═══════════════════════════════════════════════╝")
+        print()
+
+        if sessions:
+            print(f"  {'#':>3}  {'Name':<20} {'Stack':>5}  {'Updated'}")
+            print(f"  {'─'*3}  {'─'*20} {'─'*5}  {'─'*19}")
+            for i, s in enumerate(sessions, 1):
+                ts = s["updated_at"].strftime("%Y-%m-%d %H:%M") if s["updated_at"] else "—"
+                print(f"  {i:>3}  {s['name']:<20} {s['stack_depth']:>5}  {ts}")
+            print()
+
+        print("  Commands:  <number> = open session")
+        print("             N       = new session")
+        print("             D <n>   = delete session")
+        print("             L       = logout")
+        print()
+
+        try:
+            cmd = input("  > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+        upper = cmd.upper()
+
+        if upper in ("L", "LOGOUT"):
+            return None
+
+        if upper in ("N", "NEW"):
+            try:
+                name = input("  Session name [default]: ").strip() or "default"
+            except (EOFError, KeyboardInterrupt):
+                continue
+            sess = create_session(user.id, name)
+            return sess
+
+        if upper.startswith("D ") or upper.startswith("D"):
+            parts = cmd.split()
+            if len(parts) == 2 and parts[1].isdigit():
+                idx = int(parts[1]) - 1
+                if 0 <= idx < len(sessions):
+                    sid = sessions[idx]["id"]
+                    sname = sessions[idx]["name"]
+                    try:
+                        confirm = input(f"  Delete '{sname}'? [y/N] ").strip().upper()
+                    except (EOFError, KeyboardInterrupt):
+                        continue
+                    if confirm == "Y":
+                        delete_session(sid, user.id)
+                        print(f"  ✓ Session '{sname}' deleted.")
+                continue
+
+        if cmd.isdigit():
+            idx = int(cmd) - 1
+            if 0 <= idx < len(sessions):
+                return sessions[idx]
+
+        # No valid sessions and empty input → create default
+        if not sessions:
+            sess = create_session(user.id, "default")
+            return sess
+
+
 def main():
     global _settings, _variables
 
+    init_sync_db()
     readline_mod = setup_readline()
 
-    # Initialize
-    stack = Stack()
-    _variables = {}
-    variables = _variables  # local alias (same dict object)
+    # ── Authentication ───────────────────────────────────────────
+    user = login_screen()
+    if user is None:
+        print("  Goodbye!")
+        return
 
-    # Load saved state
-    stack_items, saved_vars, saved_settings = load_state()
-    for item in stack_items:
-        stack.push(item)
-    variables.update(saved_vars)
-    if saved_settings:
-        _settings.from_dict(saved_settings)
-        # Restore angle mode
-        if _settings.angle_mode != "RAD":
-            try:
-                import ops.scientific as sci
-                sci._angle_mode = _settings.angle_mode
-            except Exception:
-                pass
-
-    show_stack(stack)
-
+    # ── Session selection loop ───────────────────────────────────
     while True:
-        try:
-            line = input("\n> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-
-        if not line:
-            show_stack(stack)
+        sess_dict = session_screen(user)
+        if sess_dict is None:
+            # user chose to logout — loop back to login
+            user = login_screen()
+            if user is None:
+                print("  Goodbye!")
+                return
             continue
 
-        upper_line = line.upper().strip()
+        session_id = sess_dict["id"]
+        session_name = sess_dict["name"]
 
-        if upper_line in ("QUIT", "EXIT", "Q"):
-            break
+        # Hydrate state from DB
+        stack = Stack()
+        _variables = {}
+        variables = _variables
 
-        if upper_line == "HELP":
-            cmd_help()
-            input("\n  Press Enter to continue...")
-            show_stack(stack)
-            continue
+        stack_items, saved_vars, saved_settings, saved_undo = load_session_state(sess_dict)
+        for item in stack_items:
+            stack.push(item)
+        variables.update(saved_vars)
+        _undo_stack.clear()
+        _undo_stack.extend(saved_undo)
 
-        if upper_line == "UNDO":
-            if _undo_stack:
-                snapshot = _undo_stack.pop()
-                stack.restore(snapshot)
-                show_stack(stack)
-            else:
-                show_stack(stack, error_msg="Nothing to undo")
-            continue
-
-        # Save snapshot for UNDO
-        _undo_stack.append(stack.snapshot())
-        if len(_undo_stack) > 100:
-            _undo_stack.pop(0)
-
-        try:
-            tokens = parse(line)
-            for token in tokens:
-                dispatch(token, stack, variables, executor)
-
-            # Sync angle mode to settings
-            _settings.angle_mode = get_angle_mode()
-
-        except RPNError as e:
-            show_stack(stack, error_msg=str(e))
-            continue
-        except StackUnderflowError as e:
-            show_stack(stack, error_msg=str(e))
-            continue
-        except Exception as e:
-            show_stack(stack, error_msg=str(e))
-            continue
+        if saved_settings:
+            _settings.from_dict(saved_settings)
+            if _settings.angle_mode != "RAD":
+                try:
+                    import ops.scientific as sci
+                    sci._angle_mode = _settings.angle_mode
+                except Exception:
+                    pass
 
         show_stack(stack)
 
-    # Save state on exit
-    _settings.angle_mode = get_angle_mode()
-    save_state(stack, variables, _settings.to_dict())
-    save_readline_history(readline_mod)
-    print("  State saved. Goodbye!")
+        # ── Main REPL loop ───────────────────────────────────────
+        go_to_sessions = False
+        go_to_logout = False
+
+        while True:
+            try:
+                line = input("\n> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                _persist(session_id, stack, variables)
+                save_readline_history(readline_mod)
+                print("  State saved. Goodbye!")
+                return
+
+            if not line:
+                show_stack(stack)
+                continue
+
+            upper_line = line.upper().strip()
+
+            if upper_line in ("QUIT", "EXIT", "Q"):
+                _persist(session_id, stack, variables)
+                save_readline_history(readline_mod)
+                print("  State saved. Goodbye!")
+                return
+
+            if upper_line in ("SESSION", "SESSIONS"):
+                _persist(session_id, stack, variables)
+                go_to_sessions = True
+                break
+
+            if upper_line == "LOGOUT":
+                _persist(session_id, stack, variables)
+                go_to_logout = True
+                break
+
+            if upper_line == "HELP":
+                cmd_help()
+                input("\n  Press Enter to continue...")
+                show_stack(stack)
+                continue
+
+            if upper_line == "UNDO":
+                if _undo_stack:
+                    snapshot = _undo_stack.pop()
+                    stack.restore(snapshot)
+                    _persist(session_id, stack, variables)
+                    show_stack(stack)
+                else:
+                    show_stack(stack, error_msg="Nothing to undo")
+                continue
+
+            # Save snapshot for UNDO
+            _undo_stack.append(stack.snapshot())
+            if len(_undo_stack) > 100:
+                _undo_stack.pop(0)
+
+            try:
+                tokens = parse(line)
+                for token in tokens:
+                    dispatch(token, stack, variables, executor)
+
+                # Sync angle mode to settings
+                _settings.angle_mode = get_angle_mode()
+
+            except RPNError as e:
+                show_stack(stack, error_msg=str(e))
+                continue
+            except StackUnderflowError as e:
+                show_stack(stack, error_msg=str(e))
+                continue
+            except Exception as e:
+                show_stack(stack, error_msg=str(e))
+                continue
+
+            _persist(session_id, stack, variables)
+            show_stack(stack)
+
+        if go_to_logout:
+            user = login_screen()
+            if user is None:
+                print("  Goodbye!")
+                return
+            continue
+        # go_to_sessions: loop will call session_screen again
 
 
 if __name__ == "__main__":

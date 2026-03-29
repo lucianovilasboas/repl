@@ -1,4 +1,9 @@
-"""State persistence — save/load stack and variables to JSON."""
+"""State serialization — convert RPN objects to/from JSON-friendly dicts.
+
+The old file-based persistence (save_state / load_state) has been replaced
+by database-backed sessions via db_sync.py.  Only the serialisation helpers
+remain here because they are used by both the API and the REPL.
+"""
 
 import json
 import os
@@ -6,8 +11,6 @@ from rpn_types import (
     RPNNumber, RPNString, RPNList, RPNProgram, RPNSymbol, RPNObject,
     RPNVector, RPNMatrix
 )
-
-STATE_FILE = os.path.join(os.path.expanduser("~"), ".rpn50g_state.json")
 
 
 def _serialize(obj):
@@ -52,8 +55,13 @@ def _deserialize(data):
         return RPNString(str(v))
 
 
+# ── Legacy helpers (kept for gui.py compatibility) ───────────────────
+
+STATE_FILE = os.path.join(os.path.expanduser("~"), ".rpn50g_state.json")
+
+
 def save_state(stack, variables, settings=None):
-    """Save stack and variables to disk."""
+    """Save stack and variables to disk (legacy JSON file)."""
     state = {
         "stack": [_serialize(obj) for obj in stack.to_list()],
         "variables": {name: _serialize(val) for name, val in variables.items()},
@@ -68,7 +76,7 @@ def save_state(stack, variables, settings=None):
 
 
 def load_state():
-    """Load stack data and variables from disk. Returns (stack_items, variables, settings)."""
+    """Load stack data and variables from disk (legacy JSON file)."""
     if not os.path.exists(STATE_FILE):
         return [], {}, {}
     try:

@@ -366,7 +366,7 @@ class HP50gGUI:
             self.entry.focus_set()
             return
 
-        # Program delimiters
+        # Program delimiters 
         if cmd == "_PROG":
             self.entry.insert(tk.END, "<< ")
             self.entry.focus_set()

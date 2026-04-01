@@ -1,0 +1,9 @@
+#
+// times all elements in stack
+<<
+    WHILE 
+        DEPTH 1 > 
+        REPEAT * 
+    END
+>>
+

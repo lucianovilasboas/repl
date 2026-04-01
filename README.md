@@ -238,12 +238,60 @@ O operador `→` (ou `->`) captura valores da stack em variáveis locais, execut
   1:                           [ 17 39 ]
 ```
 
+### Carregando Programas de Arquivo
+
+Use o comando `LOAD` para carregar um arquivo `.rpl`:
+
+```
+> LOAD prog1.rpl
+```
+
+#### Formato do arquivo `.rpl`
+
+```rpl
+# somar
+// comentário — linhas com // são ignoradas
+<< WHILE DEPTH 1 > REPEAT + END >>
+
+# negar
+<< -> N << N NEG >> >>
+
+// código anônimo (sem # name) é executado diretamente
+3 4 +
+```
+
+**Regras:**
+
+| Linha | Significado |
+|-------|-------------|
+| `# nome` | Inicia uma seção nomeada. O código que segue é armazenado em `variables['NOME']` como um `RPNProgram`. |
+| `// ...` | Comentário — ignorado. |
+| Código sem `#` | Seção anônima — executada imediatamente na stack (comportamento legado). |
+
+- O nome é sempre extraído da **primeira linha após o símbolo `#`** e armazenado em **maiúsculas**.
+- Se o corpo for um único bloco `<< ... >>`, seus tokens internos são usados diretamente. Caso contrário, todos os tokens são embrulhados em um novo `RPNProgram`.
+- Após o `LOAD`, os programas ficam disponíveis como variáveis e podem ser chamados pelo nome:
+
+```
+> LOAD prog1.rpl
+  Loaded 'prog1.rpl': SOMAR, NEGAR
+
+> { 1 2 3 4 5 } SOMAR
+  1:                                       15
+
+> 7 NEGAR
+  1:                                       -7
+```
+
 ### Controles
 
 | Comando | Descrição |
 |---------|-----------|
+| `LOAD arquivo` | Carrega arquivo `.rpl` e define programas nomeados como variáveis |
 | `HELP`  | Lista todas as operações disponíveis |
-| `UNDO`  | Desfaz a última operação || `n STKL` | Define o número de níveis visíveis na stack (1–32, padrão 4) || `QUIT` / `EXIT` / `Q` | Salva estado e encerra |
+| `UNDO`  | Desfaz a última operação |
+| `n STKL` | Define o número de níveis visíveis na stack (1–32, padrão 4) |
+| `QUIT` / `EXIT` / `Q` | Salva estado e encerra |
 | `↑` / `↓` | Navega pelo histórico de comandos |
 
 ## Testes

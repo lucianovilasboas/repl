@@ -9,7 +9,7 @@ import getpass
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from stack import Stack, StackUnderflowError
-from parser import parse
+from parser import parse, parse_token, tokenize
 from operations import dispatch, RPNError, register, list_operations
 from rpn_types import RPNObject, RPNProgram, RPNNumber
 from display import display_calculator
@@ -185,14 +185,68 @@ def cmd_help():
     print()
 
 
-def load_rpl_file(filepath, stack, variables):
-    """Load and execute an .rpl file in the current calculator context.
+def _prog_depth(text: str) -> int:
+    """Retorna o número de blocos << não fechados no texto."""
+    return text.count("<<") - text.count(">>") + text.count("\u00ab") - text.count("\u00bb")
 
-    Lines beginning with // are treated as comments and ignored.
-    The remaining content is joined and executed as RPN code.
+
+def _read_multiline(first_line: str) -> str:
+    """Coleta linhas de continuação até todos os << >> estarem balanceados."""
+    parts = [first_line]
+    depth = _prog_depth(first_line)
+    while depth > 0:
+        try:
+            cont = input("...  ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        parts.append(cont)
+        depth = _prog_depth(" ".join(parts))
+    return " ".join(p.strip() for p in parts if p.strip())
+
+
+def _parse_section_as_program(code_str):
+    """Parse a code section and return an RPNProgram.
+
+    If *code_str* is a single ``<< >>`` (or ``« »``) block, returns the
+    RPNProgram parsed from it directly.  Otherwise wraps all raw tokens
+    into a new RPNProgram (treating them as the program body).
+    """
+    raw_tokens = tokenize(code_str)
+    if not raw_tokens:
+        return None
+    if len(raw_tokens) == 1:
+        tok = raw_tokens[0]
+        if tok.startswith('<<') or tok.startswith('\u00ab'):
+            result = parse_token(tok)
+            if isinstance(result, RPNProgram):
+                return result
+    # Multi-token body → wrap as a program
+    return RPNProgram(raw_tokens)
+
+
+def load_rpl_file(filepath, stack, variables):
+    """Load an .rpl file, storing named sections as RPNProgram variables.
+
+    File format
+    -----------
+    - ``# name``  — starts a named program section.  The code that follows
+                    (until the next ``# name`` marker or EOF) is parsed and
+                    stored in *variables* as an :class:`RPNProgram` under
+                    the key ``NAME`` (upper-cased).  If the body is a single
+                    ``<< ... >>`` block its inner tokens are used; otherwise
+                    all raw tokens become the program body.
+    - ``//``      — comment; the rest of the line is ignored.
+    - Anonymous code (before any ``#`` marker) is executed directly on the
+      stack (legacy behaviour).
+
+    Returns
+    -------
+    tuple (int, list[str])
+        * Total item count (programs stored + anonymous tokens dispatched).
+        * List of variable names that were defined (e.g. ``['SOMAR', 'NEGAR']``).
     """
     if not os.path.isabs(filepath):
-        # Resolve relative to cwd, then to the script directory
         if not os.path.exists(filepath):
             alt = os.path.join(os.path.dirname(os.path.abspath(__file__)), filepath)
             if os.path.exists(alt):
@@ -204,27 +258,62 @@ def load_rpl_file(filepath, stack, variables):
     with open(filepath, encoding="utf-8") as f:
         lines = f.readlines()
 
-    # Strip // comments and blank lines, then join
-    cleaned = []
+    # Split file into sections: [(name_or_None, [cleaned_code_lines])]
+    sections = []
+    current_name = None
+    current_lines = []
+
     for raw in lines:
-        # Remove inline and full-line // comments
-        idx = raw.find("//")
+        stripped = raw.strip()
+
+        # Named section header: "# program_name"
+        if stripped.startswith('#'):
+            sections.append((current_name, current_lines))
+            name_part = stripped[1:].strip()
+            current_name = name_part if name_part else None
+            current_lines = []
+            continue
+
+        # Strip // comments
+        idx = stripped.find('//')
         if idx >= 0:
-            raw = raw[:idx]
-        raw = raw.strip()
-        if raw:
-            cleaned.append(raw)
+            stripped = stripped[:idx].strip()
 
-    content = " ".join(cleaned)
-    if not content.strip():
-        return 0  # nothing to execute
+        if stripped:
+            current_lines.append(stripped)
 
-    tokens = parse(content)
+    sections.append((current_name, current_lines))  # last section
+
     count = 0
-    for token in tokens:
-        dispatch(token, stack, variables, executor)
-        count += 1
-    return count
+    defined_names = []
+
+    for name, code_lines in sections:
+        content = " ".join(code_lines).strip()
+
+        if name:
+            # Named section → parse and store as RPNProgram variable
+            var_name = name.upper()
+            if content:
+                prog = _parse_section_as_program(content)
+                if prog is not None:
+                    variables[var_name] = prog
+                    defined_names.append(var_name)
+                    count += 1
+            else:
+                # Empty body → store empty program
+                variables[var_name] = RPNProgram([])
+                defined_names.append(var_name)
+                count += 1
+        else:
+            # Anonymous section → execute directly (legacy)
+            if not content:
+                continue
+            tokens = parse(content)
+            for token in tokens:
+                dispatch(token, stack, variables, executor)
+                count += 1
+
+    return count, defined_names
 
 
 # ── Persistence helper ───────────────────────────────────────────────
@@ -439,6 +528,8 @@ def main():
         while True:
             try:
                 line = input("\n> ").strip()
+                if line and _prog_depth(line) > 0:
+                    line = _read_multiline(line)
             except (EOFError, KeyboardInterrupt):
                 print()
                 _persist(session_id, stack, variables)
@@ -482,11 +573,15 @@ def main():
                     continue
                 filepath = parts[1].strip().strip('"').strip("'")
                 try:
-                    n = load_rpl_file(filepath, stack, variables)
+                    n, defined = load_rpl_file(filepath, stack, variables)
                     _settings.angle_mode = get_angle_mode()
                     _persist(session_id, stack, variables)
-                    show_stack(user.username, stack,
-                               error_msg=f"Loaded '{os.path.basename(filepath)}' ({n} token(s))")
+                    if defined:
+                        names_str = ", ".join(defined)
+                        msg = f"Loaded '{os.path.basename(filepath)}': {names_str}"
+                    else:
+                        msg = f"Loaded '{os.path.basename(filepath)}' ({n} token(s))"
+                    show_stack(user.username, stack, error_msg=msg)
                 except FileNotFoundError as e:
                     show_stack(user.username, stack, error_msg=str(e))
                 except RPNError as e:

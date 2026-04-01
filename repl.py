@@ -185,6 +185,48 @@ def cmd_help():
     print()
 
 
+def load_rpl_file(filepath, stack, variables):
+    """Load and execute an .rpl file in the current calculator context.
+
+    Lines beginning with // are treated as comments and ignored.
+    The remaining content is joined and executed as RPN code.
+    """
+    if not os.path.isabs(filepath):
+        # Resolve relative to cwd, then to the script directory
+        if not os.path.exists(filepath):
+            alt = os.path.join(os.path.dirname(os.path.abspath(__file__)), filepath)
+            if os.path.exists(alt):
+                filepath = alt
+
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"File not found: {filepath}")
+
+    with open(filepath, encoding="utf-8") as f:
+        lines = f.readlines()
+
+    # Strip // comments and blank lines, then join
+    cleaned = []
+    for raw in lines:
+        # Remove inline and full-line // comments
+        idx = raw.find("//")
+        if idx >= 0:
+            raw = raw[:idx]
+        raw = raw.strip()
+        if raw:
+            cleaned.append(raw)
+
+    content = " ".join(cleaned)
+    if not content.strip():
+        return 0  # nothing to execute
+
+    tokens = parse(content)
+    count = 0
+    for token in tokens:
+        dispatch(token, stack, variables, executor)
+        count += 1
+    return count
+
+
 # ── Persistence helper ───────────────────────────────────────────────
 
 def _persist(session_id, stack, variables):
@@ -430,6 +472,27 @@ def main():
                 cmd_help()
                 input("\n  Press Enter to continue...")
                 show_stack(user.username, stack)
+                continue
+
+            # LOAD command: LOAD filename  or  LOAD "filename"
+            if upper_line.startswith("LOAD ") or upper_line == "LOAD":
+                parts = line.strip().split(None, 1)
+                if len(parts) < 2:
+                    show_stack(user.username, stack, error_msg="Usage: LOAD <filename>")
+                    continue
+                filepath = parts[1].strip().strip('"').strip("'")
+                try:
+                    n = load_rpl_file(filepath, stack, variables)
+                    _settings.angle_mode = get_angle_mode()
+                    _persist(session_id, stack, variables)
+                    show_stack(user.username, stack,
+                               error_msg=f"Loaded '{os.path.basename(filepath)}' ({n} token(s))")
+                except FileNotFoundError as e:
+                    show_stack(user.username, stack, error_msg=str(e))
+                except RPNError as e:
+                    show_stack(user.username, stack, error_msg=str(e))
+                except Exception as e:
+                    show_stack(user.username, stack, error_msg=f"Error loading file: {e}")
                 continue
 
             if upper_line == "UNDO":

@@ -10,6 +10,7 @@ from stack import Stack
 from rpn_types import RPNNumber
 from operations import dispatch, RPNError
 import ops  # noqa: F401
+from parser import parse
 
 
 def make_stack(*values):
@@ -116,3 +117,74 @@ def test_deg_mode():
     assert abs(top(s) - 1.0) < 1e-10
     # Restore RAD mode
     dispatch("RAD", s, {})
+
+
+def test_sin_deg():
+    s = Stack()
+    dispatch("DEG", s, {})
+    s.push(RPNNumber(90))
+    dispatch("SIN", s, {})
+    assert abs(top(s) - 1.0) < 1e-10
+    dispatch("RAD", s, {})  # restaura modo padrão
+
+
+def test_cos_deg():
+    s = Stack()
+    dispatch("DEG", s, {})
+    s.push(RPNNumber(0))
+    dispatch("COS", s, {})
+    assert abs(top(s) - 1.0) < 1e-10
+    dispatch("RAD", s, {})
+
+
+def test_tan_deg():
+    s = Stack()
+    dispatch("DEG", s, {})
+    s.push(RPNNumber(45))
+    dispatch("TAN", s, {})
+    assert abs(top(s) - 1.0) < 1e-10
+    dispatch("RAD", s, {})
+
+
+def test_sin_grad():
+    s = Stack()
+    dispatch("GRAD", s, {})
+    s.push(RPNNumber(100))  # 100 grad = 90 graus
+    dispatch("SIN", s, {})
+    assert abs(top(s) - 1.0) < 1e-10
+    dispatch("RAD", s, {})
+
+
+def test_cos_grad():
+    s = Stack()
+    dispatch("GRAD", s, {})
+    s.push(RPNNumber(0))
+    dispatch("COS", s, {})
+    assert abs(top(s) - 1.0) < 1e-10
+    dispatch("RAD", s, {})
+
+
+def test_tan_grad():
+    s = Stack()
+    dispatch("GRAD", s, {})
+    s.push(RPNNumber(50))  # 50 grad = 45 graus
+    dispatch("TAN", s, {})
+    assert abs(top(s) - 1.0) < 1e-10
+    dispatch("RAD", s, {})
+
+
+def test_algebraic_pi_div_2():
+    s = Stack()
+    for obj in parse("PI/2"):
+        if hasattr(obj, 'value'):
+            s.push(obj)
+    assert abs(top(s) - (math.pi/2)) < 1e-10
+
+
+def test_algebraic_nested():
+    s = Stack()
+    # 1+9/(2+1) == 1+9/3 == 1+3 == 4
+    for obj in parse("1+9/(2+1)"):
+        if hasattr(obj, 'value'):
+            s.push(obj)
+    assert abs(top(s) - 4.0) < 1e-10

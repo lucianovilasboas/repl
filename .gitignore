@@ -3,3 +3,4 @@ pycache__/
 __pycache__/
 *.pyc
 .vscode/
+.venv/

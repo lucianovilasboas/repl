@@ -1,6 +1,8 @@
 """Tokenizer and parser for RPN input."""
 
 from rpn_types import RPNNumber, RPNString, RPNList, RPNProgram, RPNSymbol, RPNVector, RPNMatrix
+import re
+import math
 
 
 def tokenize(line):
@@ -118,6 +120,29 @@ def tokenize(line):
     return tokens
 
 
+def is_algebraic_expr(line):
+    # Aceita números, PI, operadores + - * / ^, parênteses e espaços
+    # Deve conter pelo menos um operador para ser considerada expressão
+    expr = line.strip().replace(' ', '')
+    if not expr:
+        return False
+    # Remove todas as ocorrências de PI (case-insensitive)
+    expr_no_pi = re.sub(r'pi', '', expr, flags=re.IGNORECASE)
+    # Aceita apenas números, PI/pi, operadores, parênteses
+    allowed = set('0123456789.+-*/^()')
+    if all(c in allowed for c in expr_no_pi):
+        return any(op in expr for op in '+-*/^')  # usa expr original
+    return False
+
+
+def eval_algebraic_expr(expr):
+    # Substitui PI/pi por math.pi (evita dupla substituição com lookbehind)
+    expr = re.sub(r'(?<!\.)pi', 'math.pi', expr, flags=re.IGNORECASE)
+    # Permite apenas operadores seguros
+    allowed = {"__builtins__": None, "math": math}
+    return eval(expr, allowed)
+
+
 def parse_token(token_str):
     """Parse a single token string into an RPNObject or return the string as a command."""
 
@@ -202,7 +227,15 @@ def parse_token(token_str):
     return token_str.upper()
 
 
+# Substituir parse apenas se não estiver sobrescrevendo a si mesma
+
 def parse(line):
     """Parse a full input line into a list of RPNObjects and command strings."""
+    if is_algebraic_expr(line):
+        try:
+            val = eval_algebraic_expr(line)
+            return [RPNNumber(val)]
+        except Exception:
+            pass  # Se falhar, cai no parser padrão
     raw_tokens = tokenize(line)
     return [parse_token(t) for t in raw_tokens]
